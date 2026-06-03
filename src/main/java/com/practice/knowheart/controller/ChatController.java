@@ -39,4 +39,16 @@ public class ChatController {
     public String chatPost(@RequestBody ChatRequest request) {
         return loveService.chatWithMemory(request.getMessage(), request.getUserId());
     }
+
+    // 带工具支持的多轮对话
+    @GetMapping("/chat/tools")
+    public String chatWithTools(@RequestParam String msg, @RequestParam String userId) {
+        return loveService.chatWithMemoryAndTools(msg, userId);
+    }
+
+    // 带工具支持的流式对话
+    @GetMapping(value = "/chat/stream/tools", produces = "text/event-stream")
+    public Flux<String> chatStreamWithTools(@RequestParam String msg, @RequestParam String userId) {
+        return loveService.chatStreamWithTools(msg, userId);
+    }
 }

@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>知意 KnowHeart</title>
+
+  <!-- 引入 marked.js 渲染 Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -39,7 +43,7 @@
       position: relative;
     }
 
-    /* ── Header ── */
+    /* Header 样式保持不变 */
     .header {
       flex-shrink: 0;
       display: flex;
@@ -92,7 +96,7 @@
     .status-dot.online { background: var(--ios-green); }
     .status-dot.offline { background: #FF3B30; }
 
-    /* ── Messages ── */
+    /* Messages */
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -141,20 +145,83 @@
       color: #636366;
     }
 
+    /* 气泡样式 - 支持 HTML 内容 */
     .bubble {
       max-width: 75%;
       padding: 10px 14px;
       border-radius: 18px;
-      font-size: 16px;
+      font-size: 15px;
       line-height: 1.45;
       word-break: break-word;
-      white-space: pre-wrap;
     }
 
-    .msg-row.ai .bubble {
+    /* AI 气泡内的 Markdown 样式 */
+    .bubble.ai-content {
       background: var(--bubble-ai);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
+    }
+
+    .bubble.ai-content h1, .bubble.ai-content h2, .bubble.ai-content h3 {
+      margin: 8px 0 4px 0;
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+
+    .bubble.ai-content h1:first-child,
+    .bubble.ai-content h2:first-child,
+    .bubble.ai-content h3:first-child {
+      margin-top: 0;
+    }
+
+    .bubble.ai-content p {
+      margin: 6px 0;
+    }
+
+    .bubble.ai-content p:first-child {
+      margin-top: 0;
+    }
+
+    .bubble.ai-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble.ai-content strong {
+      font-weight: 600;
+    }
+
+    .bubble.ai-content ul, .bubble.ai-content ol {
+      margin: 6px 0;
+      padding-left: 20px;
+    }
+
+    .bubble.ai-content li {
+      margin: 4px 0;
+    }
+
+    .bubble.ai-content hr {
+      margin: 10px 0;
+      border: 0.5px solid #c6c6c8;
+    }
+
+    .bubble.ai-content blockquote {
+      margin: 6px 0;
+      padding-left: 12px;
+      border-left: 3px solid #007AFF;
+      color: #5c5c62;
+    }
+
+    .bubble.ai-content a {
+      color: #007AFF;
+      text-decoration: none;
+    }
+
+    .bubble.ai-content code {
+      background: rgba(0,0,0,0.05);
+      padding: 2px 4px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.9em;
     }
 
     .msg-row.user .bubble {
@@ -169,11 +236,17 @@
       color: var(--text-secondary);
     }
 
+    .bubble.ai-content.streaming::after {
+      content: "▍";
+      animation: blink 0.8s step-end infinite;
+      color: var(--text-secondary);
+    }
+
     .msg-row.user .bubble.streaming::after { color: rgba(255,255,255,0.7); }
 
     @keyframes blink { 50% { opacity: 0; } }
 
-    /* ── Typing indicator ── */
+    /* Typing indicator */
     .typing-row {
       display: flex;
       align-items: flex-end;
@@ -215,7 +288,7 @@
       30% { transform: translateY(-5px); opacity: 1; }
     }
 
-    /* ── Welcome ── */
+    /* Welcome */
     .welcome {
       text-align: center;
       padding: 24px 20px;
@@ -226,7 +299,7 @@
 
     .welcome-icon { font-size: 40px; margin-bottom: 8px; }
 
-    /* ── Input bar ── */
+    /* Input bar */
     .input-bar {
       flex-shrink: 0;
       display: flex;
@@ -308,241 +381,267 @@
   </style>
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <div class="header-avatar">💗</div>
-      <div class="header-name">知意 KnowHeart</div>
-      <div class="header-status">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">连接中...</span>
-      </div>
-    </header>
-
-    <div class="messages" id="messages">
-      <div class="welcome">
-        <div class="welcome-icon">💗</div>
-        <div>你好，我是知意</div>
-        <div style="margin-top:4px;font-size:13px;">你的 AI 恋爱顾问，有什么想聊的吗？</div>
-      </div>
+<div class="app">
+  <header class="header">
+    <div class="header-avatar">💗</div>
+    <div class="header-name">知意 KnowHeart</div>
+    <div class="header-status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">连接中...</span>
     </div>
+  </header>
 
-    <div class="input-bar">
-      <div class="input-wrap">
-        <textarea id="input" rows="1" placeholder="输入消息..." maxlength="2000"></textarea>
-      </div>
-      <button class="send-btn" id="sendBtn" disabled aria-label="发送">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-        </svg>
-      </button>
+  <div class="messages" id="messages">
+    <div class="welcome">
+      <div class="welcome-icon">💗</div>
+      <div>你好，我是知意</div>
+      <div style="margin-top:4px;font-size:13px;">你的 AI 恋爱顾问，有什么想聊的吗？</div>
     </div>
   </div>
 
-  <div class="error-toast" id="errorToast"></div>
+  <div class="input-bar">
+    <div class="input-wrap">
+      <textarea id="input" rows="1" placeholder="输入消息..." maxlength="2000"></textarea>
+    </div>
+    <button class="send-btn" id="sendBtn" disabled aria-label="发送">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+      </svg>
+    </button>
+  </div>
+</div>
 
-  <script>
-    const API_BASE = `${window.location.origin}/api/knowheart`;
-    const USER_ID_KEY = 'knowheart_userId';
+<div class="error-toast" id="errorToast"></div>
 
-    const messagesEl = document.getElementById('messages');
-    const inputEl = document.getElementById('input');
-    const sendBtn = document.getElementById('sendBtn');
-    const statusDot = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
-    const errorToast = document.getElementById('errorToast');
+<script>
+  const API_BASE = `${window.location.origin}/api/knowheart`;
+  const USER_ID_KEY = 'knowheart_userId';
 
-    let isStreaming = false;
-    let abortController = null;
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const errorToast = document.getElementById('errorToast');
 
-    function getUserId() {
-      let id = localStorage.getItem(USER_ID_KEY);
-      if (!id) {
-        id = crypto.randomUUID();
-        localStorage.setItem(USER_ID_KEY, id);
+  let isStreaming = false;
+  let abortController = null;
+
+  function getUserId() {
+    let id = localStorage.getItem(USER_ID_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(USER_ID_KEY, id);
+    }
+    return id;
+  }
+
+  const userId = getUserId();
+
+  function setOnline(online) {
+    statusDot.className = 'status-dot ' + (online ? 'online' : 'offline');
+    statusText.textContent = online ? '在线' : '离线';
+  }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
+      setOnline(res.ok);
+    } catch {
+      setOnline(false);
+    }
+  }
+
+  function showError(msg) {
+    errorToast.textContent = msg;
+    errorToast.classList.add('show');
+    setTimeout(() => errorToast.classList.remove('show'), 3000);
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // 渲染 Markdown 为 HTML
+  function renderMarkdown(text) {
+    if (!text) return '';
+    try {
+      return marked.parse(text);
+    } catch (e) {
+      return text.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+      }).replace(/\n/g, '<br>');
+    }
+  }
+
+  function createMsgRow(role, text, isHtml = false) {
+    const row = document.createElement('div');
+    row.className = `msg-row ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.textContent = role === 'ai' ? '💗' : '我';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
+    if (role === 'ai') {
+      bubble.classList.add('ai-content');
+      if (isHtml) {
+        bubble.innerHTML = text;
+      } else {
+        bubble.innerHTML = renderMarkdown(text);
       }
-      return id;
-    }
-
-    const userId = getUserId();
-
-    function setOnline(online) {
-      statusDot.className = 'status-dot ' + (online ? 'online' : 'offline');
-      statusText.textContent = online ? '在线' : '离线';
-    }
-
-    async function checkHealth() {
-      try {
-        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
-        setOnline(res.ok);
-      } catch {
-        setOnline(false);
-      }
-    }
-
-    function showError(msg) {
-      errorToast.textContent = msg;
-      errorToast.classList.add('show');
-      setTimeout(() => errorToast.classList.remove('show'), 3000);
-    }
-
-    function scrollToBottom() {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    function createMsgRow(role, text) {
-      const row = document.createElement('div');
-      row.className = `msg-row ${role}`;
-
-      const avatar = document.createElement('div');
-      avatar.className = 'msg-avatar';
-      avatar.textContent = role === 'ai' ? '💗' : '我';
-
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
+    } else {
       bubble.textContent = text;
-
-      row.appendChild(avatar);
-      row.appendChild(bubble);
-      return { row, bubble };
     }
 
-    function createTypingIndicator() {
-      const row = document.createElement('div');
-      row.className = 'typing-row';
-      row.id = 'typingIndicator';
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    return { row, bubble };
+  }
 
-      row.innerHTML = `
+  function createTypingIndicator() {
+    const row = document.createElement('div');
+    row.className = 'typing-row';
+    row.id = 'typingIndicator';
+
+    row.innerHTML = `
         <div class="msg-avatar" style="background:linear-gradient(135deg,#FF6B9D,#C850C0);display:flex;align-items:center;justify-content:center;font-size:14px;">💗</div>
         <div class="typing-bubble">
           <span class="typing-label">正在输入</span>
           <div class="typing-dots"><span></span><span></span><span></span></div>
         </div>
       `;
-      return row;
-    }
+    return row;
+  }
 
-    function removeTypingIndicator() {
-      document.getElementById('typingIndicator')?.remove();
-    }
+  function removeTypingIndicator() {
+    document.getElementById('typingIndicator')?.remove();
+  }
 
-    function autoResize() {
-      inputEl.style.height = 'auto';
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
-      sendBtn.disabled = !inputEl.value.trim() || isStreaming;
-    }
+  function autoResize() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+    sendBtn.disabled = !inputEl.value.trim() || isStreaming;
+  }
 
-    function parseSSEChunk(text) {
-      const parts = [];
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          parts.push(line.slice(5).trimStart());
-        } else if (line.trim() && !line.startsWith(':') && !line.startsWith('event:')) {
-          parts.push(line);
-        }
+  function parseSSEChunk(text) {
+    const parts = [];
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('data:')) {
+        parts.push(line.slice(5).trimStart());
+      } else if (line.trim() && !line.startsWith(':') && !line.startsWith('event:')) {
+        parts.push(line);
       }
-      return parts.join('');
     }
+    return parts.join('');
+  }
 
-    async function sendMessage() {
-      const text = inputEl.value.trim();
-      if (!text || isStreaming) return;
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isStreaming) return;
 
-      const welcome = messagesEl.querySelector('.welcome');
-      if (welcome) welcome.remove();
+    const welcome = messagesEl.querySelector('.welcome');
+    if (welcome) welcome.remove();
 
-      const { row: userRow } = createMsgRow('user', text);
-      messagesEl.appendChild(userRow);
+    const { row: userRow } = createMsgRow('user', text);
+    messagesEl.appendChild(userRow);
 
-      inputEl.value = '';
-      autoResize();
+    inputEl.value = '';
+    autoResize();
+    scrollToBottom();
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+    messagesEl.appendChild(createTypingIndicator());
+    scrollToBottom();
+
+    abortController = new AbortController();
+
+    try {
+      const url = `${API_BASE}/chat/stream?msg=${encodeURIComponent(text)}&userId=${encodeURIComponent(userId)}`;
+      const response = await fetch(url, { signal: abortController.signal });
+
+      if (!response.ok) {
+        throw new Error(`请求失败 (${response.status})`);
+      }
+
+      removeTypingIndicator();
+
+      const { row: aiRow, bubble } = createMsgRow('ai', '');
+      bubble.classList.add('streaming');
+      messagesEl.appendChild(aiRow);
       scrollToBottom();
 
-      isStreaming = true;
-      sendBtn.disabled = true;
-      messagesEl.appendChild(createTypingIndicator());
-      scrollToBottom();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let content = '';
 
-      abortController = new AbortController();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      try {
-        const url = `${API_BASE}/chat/stream?msg=${encodeURIComponent(text)}&userId=${encodeURIComponent(userId)}`;
-        const response = await fetch(url, { signal: abortController.signal });
+        buffer += decoder.decode(value, { stream: true });
+        const segments = buffer.split('\n\n');
+        buffer = segments.pop() || '';
 
-        if (!response.ok) {
-          throw new Error(`请求失败 (${response.status})`);
-        }
-
-        removeTypingIndicator();
-
-        const { row: aiRow, bubble } = createMsgRow('ai', '');
-        bubble.classList.add('streaming');
-        messagesEl.appendChild(aiRow);
-        scrollToBottom();
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let content = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const segments = buffer.split('\n\n');
-          buffer = segments.pop() || '';
-
-          for (const segment of segments) {
-            const chunk = parseSSEChunk(segment);
-            if (chunk) {
-              content += chunk;
-              bubble.textContent = content;
-              scrollToBottom();
-            }
-          }
-        }
-
-        if (buffer.trim()) {
-          const chunk = parseSSEChunk(buffer);
+        for (const segment of segments) {
+          const chunk = parseSSEChunk(segment);
           if (chunk) {
             content += chunk;
-            bubble.textContent = content;
+            // 实时渲染 Markdown
+            bubble.innerHTML = renderMarkdown(content);
+            scrollToBottom();
           }
         }
-
-        if (!content) {
-          bubble.textContent = '抱歉，我没有收到回复，请再试一次。';
-        }
-
-        bubble.classList.remove('streaming');
-      } catch (err) {
-        removeTypingIndicator();
-        if (err.name !== 'AbortError') {
-          showError(err.message || '发送失败，请检查后端是否已启动');
-          setOnline(false);
-        }
-      } finally {
-        isStreaming = false;
-        autoResize();
-        scrollToBottom();
-        abortController = null;
       }
+
+      if (buffer.trim()) {
+        const chunk = parseSSEChunk(buffer);
+        if (chunk) {
+          content += chunk;
+          bubble.innerHTML = renderMarkdown(content);
+        }
+      }
+
+      if (!content) {
+        bubble.innerHTML = '抱歉，我没有收到回复，请再试一次。';
+      }
+
+      bubble.classList.remove('streaming');
+    } catch (err) {
+      removeTypingIndicator();
+      if (err.name !== 'AbortError') {
+        showError(err.message || '发送失败，请检查后端是否已启动');
+        setOnline(false);
+      }
+    } finally {
+      isStreaming = false;
+      autoResize();
+      scrollToBottom();
+      abortController = null;
     }
+  }
 
-    sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', sendMessage);
 
-    inputEl.addEventListener('input', autoResize);
+  inputEl.addEventListener('input', autoResize);
 
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
 
-    checkHealth();
-    setInterval(checkHealth, 30000);
-  </script>
+  checkHealth();
+  setInterval(checkHealth, 30000);
+</script>
 </body>
 </html>

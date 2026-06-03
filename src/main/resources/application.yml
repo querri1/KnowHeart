@@ -16,3 +16,7 @@ knowheart:
   chat:
     memory:
       retrieve-size: 10
+
+amap:
+  api:
+    key: ${AMAP_API_KEY}
