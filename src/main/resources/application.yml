@@ -1,0 +1,18 @@
+spring:
+  ai:
+    openai:
+      api-key: ${DEEPSEEK_API_KEY}
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: deepseek-v4-flash
+          temperature: 0.7            # 0-2，越高越有创意
+
+server:
+  port: 8080
+
+# KnowHeart 自定义配置
+knowheart:
+  chat:
+    memory:
+      retrieve-size: 10
