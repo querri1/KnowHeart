@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
   <style>
+    /* ... 保持原有样式不变 ... */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -43,7 +44,6 @@
       position: relative;
     }
 
-    /* Header 样式保持不变 */
     .header {
       flex-shrink: 0;
       display: flex;
@@ -96,7 +96,6 @@
     .status-dot.online { background: var(--ios-green); }
     .status-dot.offline { background: #FF3B30; }
 
-    /* Messages */
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -145,7 +144,6 @@
       color: #636366;
     }
 
-    /* 气泡样式 - 支持 HTML 内容 */
     .bubble {
       max-width: 75%;
       padding: 10px 14px;
@@ -155,7 +153,6 @@
       word-break: break-word;
     }
 
-    /* AI 气泡内的 Markdown 样式 */
     .bubble.ai-content {
       background: var(--bubble-ai);
       color: var(--text-primary);
@@ -163,7 +160,7 @@
     }
 
     .bubble.ai-content h1, .bubble.ai-content h2, .bubble.ai-content h3 {
-      margin: 8px 0 4px 0;
+      margin: 10px 0 6px 0;
       font-size: 1.05em;
       font-weight: 600;
     }
@@ -175,7 +172,7 @@
     }
 
     .bubble.ai-content p {
-      margin: 6px 0;
+      margin: 8px 0;
     }
 
     .bubble.ai-content p:first-child {
@@ -191,7 +188,7 @@
     }
 
     .bubble.ai-content ul, .bubble.ai-content ol {
-      margin: 6px 0;
+      margin: 8px 0;
       padding-left: 20px;
     }
 
@@ -200,12 +197,12 @@
     }
 
     .bubble.ai-content hr {
-      margin: 10px 0;
+      margin: 12px 0;
       border: 0.5px solid #c6c6c8;
     }
 
     .bubble.ai-content blockquote {
-      margin: 6px 0;
+      margin: 8px 0;
       padding-left: 12px;
       border-left: 3px solid #007AFF;
       color: #5c5c62;
@@ -246,7 +243,6 @@
 
     @keyframes blink { 50% { opacity: 0; } }
 
-    /* Typing indicator */
     .typing-row {
       display: flex;
       align-items: flex-end;
@@ -288,7 +284,6 @@
       30% { transform: translateY(-5px); opacity: 1; }
     }
 
-    /* Welcome */
     .welcome {
       text-align: center;
       padding: 24px 20px;
@@ -299,7 +294,6 @@
 
     .welcome-icon { font-size: 40px; margin-bottom: 8px; }
 
-    /* Input bar */
     .input-bar {
       flex-shrink: 0;
       display: flex;
@@ -462,19 +456,48 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // 渲染 Markdown 为 HTML
+  // 渲染 Markdown 为 HTML - 修复换行问题
   function renderMarkdown(text) {
     if (!text) return '';
     try {
-      return marked.parse(text);
+      // 预处理：确保换行符被正确识别
+      // 将单个换行转换为双换行（Markdown 需要空行来分段）
+      let processed = text;
+
+      // 将连续的换行符规范化
+      processed = processed.replace(/\r\n/g, '\n');
+
+      // 处理标题：确保标题前后有换行
+      processed = processed.replace(/([^\n])(###+)/g, '$1\n\n$2');
+      processed = processed.replace(/(###+[^\n]+)([^\n])/g, '$1\n\n$2');
+
+      // 处理列表项
+      processed = processed.replace(/([^\n])(\n?- )/g, '$1\n\n$2');
+
+      // 确保每个标题和内容之间有间距
+      processed = processed.replace(/\n(###+)/g, '\n\n$1');
+
+      // 使用 marked 解析
+      let html = marked.parse(processed);
+
+      // 额外处理：确保生成的分隔线正确显示
+      html = html.replace(/<hr \/>/g, '<hr>');
+
+      return html;
     } catch (e) {
-      return text.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-      }).replace(/\n/g, '<br>');
+      console.error('Markdown 解析失败:', e);
+      // 降级方案：将换行转换为 <br>
+      return escapeHtml(text).replace(/\n/g, '<br>');
     }
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
   }
 
   function createMsgRow(role, text, isHtml = false) {
