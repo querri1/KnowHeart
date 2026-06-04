@@ -148,7 +148,8 @@
       background: var(--bubble-ai);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
-      line-height: 1.5;
+      line-height: 1.55;
+      white-space: normal;
     }
 
     .bubble.ai-content p {
@@ -756,6 +757,13 @@
   const AUTH_TOKEN_KEY = 'knowheart_authToken';
   const AUTH_USER_KEY = 'knowheart_authUser';
 
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({
+      breaks: true,
+      gfm: true
+    });
+  }
+
   const messagesEl = document.getElementById('messages');
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('sendBtn');
@@ -856,93 +864,44 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function preprocessAiContent(text) {
+    let s = text.replace(/\r\n/g, '\n');
+
+    // 去掉代码块包裹，保留内容
+    s = s.replace(/```[^\n]*\n?([\s\S]*?)```/g, '$1');
+    s = s.replace(/```/g, '');
+
+    // 标题符号转为加粗文本，不展示 #
+    s = s.replace(/^#{1,6}\s+(.+)$/gm, '**$1**');
+
+    // 去掉行内反引号包裹
+    s = s.replace(/`([^`]+)`/g, '$1');
+
+    // 分隔线规范化
+    s = s.replace(/^\s*[-*_]{3,}\s*$/gm, '\n---\n');
+
+    // 在常见结构标签前强制换行（AI 常输出单行长文本）
+    s = s.replace(/([^\n])\s*(📍|✨|💡|💌|🌟)/g, '$1\n\n$2');
+    s = s.replace(/\)\s*(?=[\u4e00-\u9fa5💗🌸🎡🌿🎄])/g, ')\n\n');
+    s = s.replace(/([^\n])\s*(---)\s*/g, '$1\n\n$2\n\n');
+    s = s.replace(/([^\n])\s*(\d+\.\s)/g, '$1\n$2');
+
+    // 合并过多空行
+    s = s.replace(/\n{3,}/g, '\n\n');
+
+    return s.trim();
+  }
+
   function renderMarkdown(text) {
     if (!text) return '';
     try {
-      let processed = text;
-
-      // 保护代码块（避免内部换行被处理）
-      const codeBlocks = [];
-      processed = processed.replace(/```([\s\S]*?)```/g, (match) => {
-        codeBlocks.push(match);
-        return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
-      });
-
-      // 保护行内代码
-      const inlineCodes = [];
-      processed = processed.replace(/`([^`]+)`/g, (match) => {
-        inlineCodes.push(match);
-        return `__INLINE_CODE_${inlineCodes.length - 1}__`;
-      });
-
-      // 关键：将单个换行（不在列表/标题中）转换为 Markdown 能识别的格式
-      // 先处理列表项：确保列表项前的换行正确
-      processed = processed.replace(/^(\s*[-*+]|\s*\d+\.)\s+/gm, '\n$&');
-
-      // 将单个换行转换为双换行（Markdown 需要空行来分段）
-      // 但要注意：不破坏列表、标题等特殊格式
-      const lines = processed.split('\n');
-      const result = [];
-      let inList = false;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmed = line.trim();
-
-        // 检测是否在列表中
-        const isListItem = /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed);
-        const isHeading = /^#{1,6}\s/.test(trimmed);
-        const isEmpty = trimmed === '';
-
-        if (isListItem) {
-          inList = true;
-          result.push(line);
-        } else if (isHeading) {
-          inList = false;
-          result.push(line);
-          // 标题后加空行
-          if (i + 1 < lines.length && lines[i + 1].trim() !== '') {
-            result.push('');
-          }
-        } else if (isEmpty) {
-          inList = false;
-          result.push(line);
-        } else {
-          if (inList && !isEmpty) {
-            // 列表内容，保持原样
-            result.push(line);
-          } else if (!isEmpty && result.length > 0 && result[result.length - 1] !== '') {
-            // 非空行且上一行非空，添加双换行
-            result.push('');
-            result.push(line);
-          } else {
-            result.push(line);
-          }
-        }
-      }
-
-      processed = result.join('\n');
-
-      // 使用 marked 解析
+      const processed = preprocessAiContent(text);
       let html = marked.parse(processed);
 
-      // 恢复行内代码
-      inlineCodes.forEach((code, i) => {
-        html = html.replace(`__INLINE_CODE_${i}__`, code);
-      });
-
-      // 恢复代码块
-      codeBlocks.forEach((block, i) => {
-        html = html.replace(`__CODE_BLOCK_${i}__`, block);
-      });
-
-      // 清理多余的空白段落
+      // 清理空段落
       html = html.replace(/<p>\s*<\/p>/g, '');
-      html = html.replace(/<br>\s*<\/p>/g, '</p>');
-      html = html.replace(/<p><br>/g, '<p>');
 
       return html;
-
     } catch (e) {
       console.error('Markdown 渲染失败:', e);
       return escapeHtml(text).replace(/\n/g, '<br>');
@@ -999,13 +958,26 @@
     sendBtn.disabled = !inputEl.value.trim() || isStreaming;
   }
 
-  function parseSSEChunk(text) {
-    const parts = [];
-    for (const line of text.split('\n')) {
-      if (line.startsWith('data:')) parts.push(line.slice(5).trimStart());
-      else if (line.trim() && !line.startsWith(':') && !line.startsWith('event:')) parts.push(line);
+  function parseSSEChunk(segment) {
+    if (!segment) return '';
+
+    const lines = segment.split('\n');
+    const dataLines = [];
+    let hasDataPrefix = false;
+
+    for (const line of lines) {
+      if (line.startsWith('data:')) {
+        hasDataPrefix = true;
+        dataLines.push(line.slice(5).replace(/^ /, ''));
+      } else if (line.startsWith('event:') || line.startsWith('id:') || line.startsWith('retry:') || line.startsWith(':')) {
+        continue;
+      } else if (!hasDataPrefix && line.length > 0) {
+        dataLines.push(line);
+      }
     }
-    return parts.join('');
+
+    // SSE 规范：多行 data 用换行拼接；原始流也保留换行
+    return dataLines.join('\n');
   }
 
   async function sendMessage() {
