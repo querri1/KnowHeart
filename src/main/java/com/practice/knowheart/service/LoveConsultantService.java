@@ -1,7 +1,7 @@
 package com.practice.knowheart.service;
 
-import com.practice.knowheart.service.UserProfileService;
 import com.practice.knowheart.tool.AMapDateSpotTool;
+import com.practice.knowheart.tool.WeatherTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -68,14 +68,18 @@ public class LoveConsultantService {
     private final int memoryRetrieveSize;
     private final UserProfileService userProfileService;
     private final AMapDateSpotTool dateSpotTool;
+    private final WeatherTool weatherTool;  // ← 添加
+
 
     public LoveConsultantService(ChatClient.Builder chatClientBuilder,
                                  AMapDateSpotTool dateSpotTool,
+                                 WeatherTool weatherTool,
                                  UserProfileService userProfileService,
                                  @Value("${knowheart.chat.memory.retrieve-size:10}") int retrieveSize) {
         this.memoryRetrieveSize = retrieveSize;
         this.userProfileService = userProfileService;
         this.dateSpotTool = dateSpotTool;
+        this.weatherTool = weatherTool;
 
         ChatMemory chatMemory = new InMemoryChatMemory();
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
@@ -85,7 +89,7 @@ public class LoveConsultantService {
         this.chatClient = chatClientBuilder
                 .defaultSystem(BASE_SYSTEM_PROMPT)
                 .defaultAdvisors(memoryAdvisor)
-                .defaultTools(dateSpotTool)  // ← 只在这里注册一次
+                .defaultTools(dateSpotTool,weatherTool)  // ← 只在这里注册一次
                 .build();
     }
 
