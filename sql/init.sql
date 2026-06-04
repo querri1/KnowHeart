@@ -17,3 +17,17 @@ CREATE TABLE IF NOT EXISTS user_profile (
     updated_at    DATETIME      NULL COMMENT '更新时间',
     PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户画像';
+
+-- 账号表（登录注册）
+CREATE TABLE IF NOT EXISTS app_user (
+    user_id       VARCHAR(100)  NOT NULL COMMENT '用户 ID（主键，与 user_profile 关联）',
+    username      VARCHAR(50)   NOT NULL COMMENT '登录用户名',
+    password_hash VARCHAR(100)  NOT NULL COMMENT '密码哈希',
+    nickname      VARCHAR(50)   NULL COMMENT '昵称',
+    auth_token    VARCHAR(100)  NULL COMMENT '登录令牌',
+    token_expiry  DATETIME      NULL COMMENT '令牌过期时间',
+    created_at    DATETIME      NULL COMMENT '注册时间',
+    PRIMARY KEY (user_id),
+    UNIQUE KEY uk_username (username),
+    UNIQUE KEY uk_auth_token (auth_token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账号';
