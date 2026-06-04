@@ -92,15 +92,14 @@ public class WeatherTool {
             String advice = getDateAdvice(dayWeather, safeParseInt(dayTemp));
 
             StringBuilder sb = new StringBuilder();
-            sb.append("☀️ **").append(province).append(cityName).append(" 天气**\n\n");
+            sb.append("☀️ ").append(province).append(cityName).append(" 天气\n\n");
             sb.append("📅 日期：").append(date).append("\n");
             sb.append("🌡️ 白天温度：").append(dayTemp).append("°C\n");
             sb.append("🌙 夜间温度：").append(nightTemp).append("°C\n");
             sb.append("☁️ 白天天气：").append(dayWeather).append("\n");
             sb.append("🌙 夜间天气：").append(nightWeather).append("\n");
-            sb.append("💨 风向：白天 ").append(dayWind).append(" ").append(dayPower).append("级\n");
-            sb.append("💨 夜间风向：").append(nightWind).append(" ").append(nightPower).append("级\n\n");
-            sb.append("💡 **约会建议**：").append(advice);
+            sb.append("💨 风向：白天 ").append(dayWind).append("\n\n");
+            sb.append("💡 约会建议：").append(advice);
 
             return sb.toString();
 

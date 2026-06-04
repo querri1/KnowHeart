@@ -143,10 +143,88 @@
       word-break: break-word;
     }
 
+    /* AI 气泡内的 Markdown 样式优化 */
     .bubble.ai-content {
       background: var(--bubble-ai);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
+      line-height: 1.5;
+    }
+
+    .bubble.ai-content p {
+      margin: 8px 0;
+    }
+
+    .bubble.ai-content p:first-child {
+      margin-top: 0;
+    }
+
+    .bubble.ai-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble.ai-content br {
+      display: block;
+      content: "";
+      margin: 4px 0;
+    }
+
+    .bubble.ai-content strong {
+      font-weight: 600;
+      color: #000;
+    }
+
+    .bubble.ai-content ul, .bubble.ai-content ol {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .bubble.ai-content li {
+      margin: 4px 0;
+    }
+
+    .bubble.ai-content hr {
+      margin: 12px 0;
+      border: 0.5px solid #c6c6c8;
+    }
+
+    .bubble.ai-content h1, .bubble.ai-content h2, .bubble.ai-content h3 {
+      margin: 12px 0 6px 0;
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+
+    .bubble.ai-content h1:first-child,
+    .bubble.ai-content h2:first-child,
+    .bubble.ai-content h3:first-child {
+      margin-top: 0;
+    }
+
+    .bubble.ai-content blockquote {
+      margin: 8px 0;
+      padding-left: 12px;
+      border-left: 3px solid #007AFF;
+      color: #5c5c62;
+      font-style: italic;
+    }
+
+    /* 表格样式 */
+    .bubble.ai-content table {
+      border-collapse: collapse;
+      margin: 8px 0;
+      width: 100%;
+    }
+
+    .bubble.ai-content th,
+    .bubble.ai-content td {
+      border: 0.5px solid #c6c6c8;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    .bubble.ai-content th {
+      background: rgba(0,0,0,0.05);
+      font-weight: 600;
     }
 
     .bubble.ai-content h1, .bubble.ai-content h2, .bubble.ai-content h3 {
@@ -781,14 +859,92 @@
   function renderMarkdown(text) {
     if (!text) return '';
     try {
-      let processed = text.replace(/\r\n/g, '\n');
-      processed = processed.replace(/([^\n])(###+)/g, '$1\n\n$2');
-      processed = processed.replace(/(###+[^\n]+)([^\n])/g, '$1\n\n$2');
-      processed = processed.replace(/([^\n])(\n?- )/g, '$1\n\n$2');
-      processed = processed.replace(/\n(###+)/g, '\n\n$1');
+      let processed = text;
+
+      // 保护代码块（避免内部换行被处理）
+      const codeBlocks = [];
+      processed = processed.replace(/```([\s\S]*?)```/g, (match) => {
+        codeBlocks.push(match);
+        return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+      });
+
+      // 保护行内代码
+      const inlineCodes = [];
+      processed = processed.replace(/`([^`]+)`/g, (match) => {
+        inlineCodes.push(match);
+        return `__INLINE_CODE_${inlineCodes.length - 1}__`;
+      });
+
+      // 关键：将单个换行（不在列表/标题中）转换为 Markdown 能识别的格式
+      // 先处理列表项：确保列表项前的换行正确
+      processed = processed.replace(/^(\s*[-*+]|\s*\d+\.)\s+/gm, '\n$&');
+
+      // 将单个换行转换为双换行（Markdown 需要空行来分段）
+      // 但要注意：不破坏列表、标题等特殊格式
+      const lines = processed.split('\n');
+      const result = [];
+      let inList = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // 检测是否在列表中
+        const isListItem = /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed);
+        const isHeading = /^#{1,6}\s/.test(trimmed);
+        const isEmpty = trimmed === '';
+
+        if (isListItem) {
+          inList = true;
+          result.push(line);
+        } else if (isHeading) {
+          inList = false;
+          result.push(line);
+          // 标题后加空行
+          if (i + 1 < lines.length && lines[i + 1].trim() !== '') {
+            result.push('');
+          }
+        } else if (isEmpty) {
+          inList = false;
+          result.push(line);
+        } else {
+          if (inList && !isEmpty) {
+            // 列表内容，保持原样
+            result.push(line);
+          } else if (!isEmpty && result.length > 0 && result[result.length - 1] !== '') {
+            // 非空行且上一行非空，添加双换行
+            result.push('');
+            result.push(line);
+          } else {
+            result.push(line);
+          }
+        }
+      }
+
+      processed = result.join('\n');
+
+      // 使用 marked 解析
       let html = marked.parse(processed);
-      return html.replace(/<hr \/>/g, '<hr>');
-    } catch {
+
+      // 恢复行内代码
+      inlineCodes.forEach((code, i) => {
+        html = html.replace(`__INLINE_CODE_${i}__`, code);
+      });
+
+      // 恢复代码块
+      codeBlocks.forEach((block, i) => {
+        html = html.replace(`__CODE_BLOCK_${i}__`, block);
+      });
+
+      // 清理多余的空白段落
+      html = html.replace(/<p>\s*<\/p>/g, '');
+      html = html.replace(/<br>\s*<\/p>/g, '</p>');
+      html = html.replace(/<p><br>/g, '<p>');
+
+      return html;
+
+    } catch (e) {
+      console.error('Markdown 渲染失败:', e);
       return escapeHtml(text).replace(/\n/g, '<br>');
     }
   }
