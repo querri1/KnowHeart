@@ -2,6 +2,9 @@ package com.practice.knowheart.controller;
 
 import com.practice.knowheart.dto.ChatRequest;
 import com.practice.knowheart.service.LoveConsultantService;
+import com.practice.knowheart.service.UserProfileService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
@@ -38,6 +41,19 @@ public class ChatController {
     @PostMapping("/chat")
     public String chatPost(@RequestBody ChatRequest request) {
         return loveService.chatWithMemory(request.getMessage(), request.getUserId());
+    }
+
+    @Autowired
+    private UserProfileService userProfileService;
+
+    // 获取用户画像
+    @GetMapping("/profile")
+    public ResponseEntity<?> getProfile(@RequestParam String userId) {
+        var profile = userProfileService.getProfile(userId);
+        if (profile.isPresent()) {
+            return ResponseEntity.ok(profile.get());
+        }
+        return ResponseEntity.ok("暂无画像数据，请先发送一些消息");
     }
 
     // 带工具支持的多轮对话
