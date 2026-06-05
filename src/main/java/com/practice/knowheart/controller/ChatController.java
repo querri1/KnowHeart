@@ -56,6 +56,17 @@ public class ChatController {
         return ResponseEntity.ok("暂无画像数据，请先发送一些消息");
     }
 
+    // 带 RAG 知识库的对话
+    @GetMapping("/chat/rag")
+    public String chatWithRag(@RequestParam String msg, @RequestParam String userId) {
+        return loveService.chatWithRag(msg, userId);
+    }
+
+    @GetMapping(value = "/chat/stream/rag", produces = "text/event-stream")
+    public Flux<String> chatStreamWithRag(@RequestParam String msg, @RequestParam String userId) {
+        return loveService.chatStreamWithRag(msg, userId);
+    }
+
     // 带工具支持的多轮对话
     @GetMapping("/chat/tools")
     public String chatWithTools(@RequestParam String msg, @RequestParam String userId) {

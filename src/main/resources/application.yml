@@ -1,5 +1,16 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.vectorstore.pgvector.PgVectorStoreAutoConfiguration
   ai:
+
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}  # 你的阿里云百炼 API Key
+      embedding:
+        enabled: true
+        options:
+          model: text-embedding-v2  # 阿里云 Embedding 模型
+
     openai:
       api-key: ${DEEPSEEK_API_KEY}
       base-url: https://api.deepseek.com
@@ -31,6 +42,19 @@ knowheart:
   chat:
     memory:
       retrieve-size: 10
+  rag:
+    top-k: 6
+    similarity-threshold: 0.0   # 0=不过滤，取 topK 内结果（中文语义检索分数常偏低）
+    chunk-size: 500
+    chunk-overlap: 100
+  vector:
+    table-name: love_knowledge
+    dimensions: 1536   # text-embedding-v2 向量维度
+    datasource:
+      url: jdbc:postgresql://localhost:5432/knowheart_vector
+      username: postgres
+      password: ${POSTGRES_PASSWORD}
+      driver-class-name: org.postgresql.Driver
 
 amap:
   api:

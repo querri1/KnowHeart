@@ -4,6 +4,7 @@ import com.practice.knowheart.tool.AMapDateSpotTool;
 import com.practice.knowheart.tool.WeatherTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ public class LoveConsultantService {
         【重要规则】
         1. 当用户询问约会地点推荐时，你必须使用 recommendDateSpots 工具
         2. 当用户询问天气时，你必须使用 getWeather 工具
+        3. 回答恋爱问题时，优先使用下方注入的参考资料内容作答，自然融入回答，不要提及「知识库」「检索」；参考资料有相关内容时不得声称「没有相关信息」
         
         【回答格式要求 - 必须严格遵守】
         1. 使用纯文本 + Emoji 组织内容；禁止 #、```、- 列表符号等 Markdown 语法
@@ -57,39 +59,35 @@ public class LoveConsultantService {
         6. 禁止用 ``` 代码块包裹回答
         """;
 
-    // 明确声明会话 ID 的参数键
     private static final String CHAT_MEMORY_CONVERSATION_ID = "chat.memory.conversationId";
 
     private final ChatClient chatClient;
     private final int memoryRetrieveSize;
     private final UserProfileService userProfileService;
-    private final AMapDateSpotTool dateSpotTool;
-    private final WeatherTool weatherTool;  // ← 添加
-
+    private final QuestionAnswerAdvisor questionAnswerAdvisor;
 
     public LoveConsultantService(ChatClient.Builder chatClientBuilder,
                                  AMapDateSpotTool dateSpotTool,
                                  WeatherTool weatherTool,
                                  UserProfileService userProfileService,
+                                 QuestionAnswerAdvisor questionAnswerAdvisor,
                                  @Value("${knowheart.chat.memory.retrieve-size:10}") int retrieveSize) {
         this.memoryRetrieveSize = retrieveSize;
         this.userProfileService = userProfileService;
-        this.dateSpotTool = dateSpotTool;
-        this.weatherTool = weatherTool;
+        this.questionAnswerAdvisor = questionAnswerAdvisor;
 
         ChatMemory chatMemory = new InMemoryChatMemory();
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
                 .build();
 
-        // 基础 client：注册工具一次
+        // 默认启用：多轮记忆 + RAG 知识库 + 工具
         this.chatClient = chatClientBuilder
                 .defaultSystem(BASE_SYSTEM_PROMPT)
-                .defaultAdvisors(memoryAdvisor)
-                .defaultTools(dateSpotTool,weatherTool)  // ← 只在这里注册一次
+                .defaultAdvisors(memoryAdvisor, questionAnswerAdvisor)
+                .defaultTools(dateSpotTool, weatherTool)
                 .build();
     }
 
-    // 获取带用户画像的增强 System Prompt
     private String buildSystemPromptWithProfile(String conversationId) {
         String profileSummary = userProfileService.getProfileSummary(conversationId);
         if (profileSummary != null && !profileSummary.isEmpty()) {
@@ -98,26 +96,24 @@ public class LoveConsultantService {
         return BASE_SYSTEM_PROMPT;
     }
 
-    // 创建带用户画像的 ChatClient（不重复注册工具）
     private ChatClient createClientWithProfile(String conversationId) {
         String enhancedPrompt = buildSystemPromptWithProfile(conversationId);
-
-        // 如果 prompt 没变化，直接返回原 client
         if (enhancedPrompt.equals(BASE_SYSTEM_PROMPT)) {
             return chatClient;
         }
-
-        // 创建新的 ChatClient 实例，只修改 System Prompt，不重新注册工具
         return chatClient.mutate()
                 .defaultSystem(enhancedPrompt)
-                .defaultAdvisors(advisor -> advisor
-                        .param(CHAT_MEMORY_CONVERSATION_ID, conversationId)
-                        .param(MessageChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY, memoryRetrieveSize))
-                // ← 关键：不要在这里添加 .defaultTools()！
                 .build();
     }
 
-    // 普通对话
+    private ChatClient.ChatClientRequestSpec applyConversationAdvisors(
+            ChatClient.ChatClientRequestSpec spec, String conversationId) {
+        return spec.advisors(advisor -> advisor
+                .param(CHAT_MEMORY_CONVERSATION_ID, conversationId)
+                .param(MessageChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY, memoryRetrieveSize));
+    }
+
+    // 普通对话（无记忆、无 RAG）
     public String chat(String userMessage) {
         return chatClient.prompt()
                 .user(userMessage)
@@ -125,57 +121,42 @@ public class LoveConsultantService {
                 .content();
     }
 
-    // 带会话管理的对话（支持多轮对话记忆 + 用户画像）
+    // 带 RAG 知识库的对话（同步）
+    public String chatWithRag(String userMessage, String conversationId) {
+        return chatWithMemory(userMessage, conversationId);
+    }
+
+    // 多轮记忆 + 用户画像 + RAG + 工具
     public String chatWithMemory(String userMessage, String conversationId) {
         userProfileService.updateFromMessage(conversationId, userMessage);
         ChatClient clientWithProfile = createClientWithProfile(conversationId);
 
-        return clientWithProfile.prompt()
+        return applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
                 .user(userMessage)
-                .advisors(advisor -> advisor
-                        .param(CHAT_MEMORY_CONVERSATION_ID, conversationId)
-                        .param(MessageChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY, memoryRetrieveSize))
                 .call()
                 .content();
     }
 
-    // 带工具支持的多轮对话
     public String chatWithMemoryAndTools(String userMessage, String conversationId) {
-        userProfileService.updateFromMessage(conversationId, userMessage);
-        ChatClient clientWithProfile = createClientWithProfile(conversationId);
-
-        return clientWithProfile.prompt()
-                .user(userMessage)
-                .advisors(advisor -> advisor
-                        .param(CHAT_MEMORY_CONVERSATION_ID, conversationId)
-                        .param(MessageChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY, memoryRetrieveSize))
-                .call()
-                .content();
+        return chatWithMemory(userMessage, conversationId);
     }
 
-    // 流式对话
+    // 流式对话（含 RAG）
     public Flux<String> chatStream(String userMessage, String conversationId) {
         userProfileService.updateFromMessage(conversationId, userMessage);
         ChatClient clientWithProfile = createClientWithProfile(conversationId);
 
-        return clientWithProfile.prompt()
+        return applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
                 .user(userMessage)
-                .advisors(advisor -> advisor
-                        .param(CHAT_MEMORY_CONVERSATION_ID, conversationId))
                 .stream()
                 .content();
     }
 
-    // 带工具支持的流式对话
-    public Flux<String> chatStreamWithTools(String userMessage, String conversationId) {
-        userProfileService.updateFromMessage(conversationId, userMessage);
-        ChatClient clientWithProfile = createClientWithProfile(conversationId);
+    public Flux<String> chatStreamWithRag(String userMessage, String conversationId) {
+        return chatStream(userMessage, conversationId);
+    }
 
-        return clientWithProfile.prompt()
-                .user(userMessage)
-                .advisors(advisor -> advisor
-                        .param(CHAT_MEMORY_CONVERSATION_ID, conversationId))
-                .stream()
-                .content();
+    public Flux<String> chatStreamWithTools(String userMessage, String conversationId) {
+        return chatStream(userMessage, conversationId);
     }
 }
