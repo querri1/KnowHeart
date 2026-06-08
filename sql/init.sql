@@ -31,3 +31,25 @@ CREATE TABLE IF NOT EXISTS app_user (
     UNIQUE KEY uk_username (username),
     UNIQUE KEY uk_auth_token (auth_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账号';
+
+-- 对话会话（每用户最多 10 条，由应用层控制）
+CREATE TABLE IF NOT EXISTS chat_conversation (
+    conversation_id VARCHAR(100) NOT NULL COMMENT '会话 ID',
+    user_id         VARCHAR(100) NOT NULL COMMENT '所属用户',
+    title           VARCHAR(100) NULL COMMENT '会话标题',
+    created_at      DATETIME     NULL COMMENT '创建时间',
+    updated_at      DATETIME     NULL COMMENT '最后更新时间',
+    PRIMARY KEY (conversation_id),
+    KEY idx_user_updated (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天会话';
+
+-- 对话消息
+CREATE TABLE IF NOT EXISTS chat_message (
+    message_id      VARCHAR(100) NOT NULL COMMENT '消息 ID',
+    conversation_id VARCHAR(100) NOT NULL COMMENT '所属会话',
+    role            VARCHAR(20)  NOT NULL COMMENT 'USER / ASSISTANT',
+    content         TEXT         NULL COMMENT '消息内容',
+    created_at      DATETIME     NULL COMMENT '发送时间',
+    PRIMARY KEY (message_id),
+    KEY idx_conversation_time (conversation_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天消息';

@@ -1,21 +1,33 @@
 package com.practice.knowheart.controller;
 
 import com.practice.knowheart.dto.ChatRequest;
+import com.practice.knowheart.entity.AppUser;
+import com.practice.knowheart.service.AuthService;
+import com.practice.knowheart.service.ConversationService;
 import com.practice.knowheart.service.LoveConsultantService;
 import com.practice.knowheart.service.UserProfileService;
-import org.springframework.http.ResponseEntity;
+import com.practice.knowheart.util.AuthTokenUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping("/api/knowheart")
 public class ChatController {
 
     private final LoveConsultantService loveService;
+    private final AuthService authService;
+    private final ConversationService conversationService;
 
-    public ChatController(LoveConsultantService loveService) {
+    public ChatController(LoveConsultantService loveService,
+                          AuthService authService,
+                          ConversationService conversationService) {
         this.loveService = loveService;
+        this.authService = authService;
+        this.conversationService = conversationService;
     }
 
     @GetMapping("/health")
@@ -29,24 +41,30 @@ public class ChatController {
     }
 
     @GetMapping("/chat/memory")
-    public String chatWithMemory(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatWithMemory(msg, userId);
+    public String chatWithMemory(@RequestParam String msg,
+                                 @RequestParam(required = false) String userId,
+                                 @RequestParam(required = false) String conversationId,
+                                 @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveSyncChat(msg, userId, conversationId, authorization);
     }
 
     @GetMapping(value = "/chat/stream", produces = "text/event-stream")
-    public Flux<String> chatStream(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatStream(msg, userId);
+    public Flux<String> chatStream(@RequestParam String msg,
+                                   @RequestParam(required = false) String userId,
+                                   @RequestParam(required = false) String conversationId,
+                                   @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveStreamChat(msg, userId, conversationId, authorization);
     }
 
     @PostMapping("/chat")
-    public String chatPost(@RequestBody ChatRequest request) {
-        return loveService.chatWithMemory(request.getMessage(), request.getUserId());
+    public String chatPost(@RequestBody ChatRequest request,
+                           @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveSyncChat(request.getMessage(), request.getUserId(), request.getConversationId(), authorization);
     }
 
     @Autowired
     private UserProfileService userProfileService;
 
-    // 获取用户画像
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile(@RequestParam String userId) {
         var profile = userProfileService.getProfile(userId);
@@ -56,26 +74,76 @@ public class ChatController {
         return ResponseEntity.ok("暂无画像数据，请先发送一些消息");
     }
 
-    // 带 RAG 知识库的对话
     @GetMapping("/chat/rag")
-    public String chatWithRag(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatWithRag(msg, userId);
+    public String chatWithRag(@RequestParam String msg,
+                              @RequestParam(required = false) String userId,
+                              @RequestParam(required = false) String conversationId,
+                              @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveSyncChat(msg, userId, conversationId, authorization);
     }
 
     @GetMapping(value = "/chat/stream/rag", produces = "text/event-stream")
-    public Flux<String> chatStreamWithRag(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatStreamWithRag(msg, userId);
+    public Flux<String> chatStreamWithRag(@RequestParam String msg,
+                                          @RequestParam(required = false) String userId,
+                                          @RequestParam(required = false) String conversationId,
+                                          @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveStreamChat(msg, userId, conversationId, authorization);
     }
 
-    // 带工具支持的多轮对话
     @GetMapping("/chat/tools")
-    public String chatWithTools(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatWithMemoryAndTools(msg, userId);
+    public String chatWithTools(@RequestParam String msg,
+                                @RequestParam(required = false) String userId,
+                                @RequestParam(required = false) String conversationId,
+                                @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveSyncChat(msg, userId, conversationId, authorization);
     }
 
-    // 带工具支持的流式对话
     @GetMapping(value = "/chat/stream/tools", produces = "text/event-stream")
-    public Flux<String> chatStreamWithTools(@RequestParam String msg, @RequestParam String userId) {
-        return loveService.chatStreamWithTools(msg, userId);
+    public Flux<String> chatStreamWithTools(@RequestParam String msg,
+                                            @RequestParam(required = false) String userId,
+                                            @RequestParam(required = false) String conversationId,
+                                            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return resolveStreamChat(msg, userId, conversationId, authorization);
+    }
+
+    private Flux<String> resolveStreamChat(String msg,
+                                           String userId,
+                                           String conversationId,
+                                           String authorization) {
+        String token = AuthTokenUtils.extractToken(authorization);
+        if (token != null && !token.isBlank()) {
+            AppUser user = authService.requireValidUser(token);
+            String resolvedConversationId = conversationService.resolveConversationId(user.getUserId(), conversationId);
+            AtomicReference<StringBuilder> assistantBuffer = new AtomicReference<>(new StringBuilder());
+            return loveService.chatStream(msg, user.getUserId(), resolvedConversationId)
+                    .doOnNext(chunk -> assistantBuffer.get().append(chunk))
+                    .doOnComplete(() -> conversationService.saveExchange(
+                            user.getUserId(),
+                            resolvedConversationId,
+                            msg,
+                            assistantBuffer.get().toString()));
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("请先登录，或提供 userId");
+        }
+        return loveService.chatStreamGuest(msg, userId);
+    }
+
+    private String resolveSyncChat(String msg,
+                                   String userId,
+                                   String conversationId,
+                                   String authorization) {
+        String token = AuthTokenUtils.extractToken(authorization);
+        if (token != null && !token.isBlank()) {
+            AppUser user = authService.requireValidUser(token);
+            String resolvedConversationId = conversationService.resolveConversationId(user.getUserId(), conversationId);
+            String response = loveService.chatWithMemory(msg, user.getUserId(), resolvedConversationId);
+            conversationService.saveExchange(user.getUserId(), resolvedConversationId, msg, response);
+            return response;
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("请先登录，或提供 userId");
+        }
+        return loveService.chatWithMemoryGuest(msg, userId);
     }
 }

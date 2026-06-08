@@ -3,6 +3,7 @@ package com.practice.knowheart.dto;
 public class ChatRequest {
     private String message;
     private String userId;
+    private String conversationId;
 
     public ChatRequest() {}
 
@@ -15,4 +16,6 @@ public class ChatRequest {
     public void setMessage(String message) { this.message = message; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+    public String getConversationId() { return conversationId; }
+    public void setConversationId(String conversationId) { this.conversationId = conversationId; }
 }

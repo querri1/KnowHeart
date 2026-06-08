@@ -2,11 +2,11 @@ package com.practice.knowheart.service;
 
 import com.practice.knowheart.tool.AMapDateSpotTool;
 import com.practice.knowheart.tool.WeatherTool;
+import com.practice.knowheart.memory.ChatMemoryContext;
+import com.practice.knowheart.memory.HybridChatMemory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -64,23 +64,19 @@ public class LoveConsultantService {
     private final ChatClient chatClient;
     private final int memoryRetrieveSize;
     private final UserProfileService userProfileService;
-    private final QuestionAnswerAdvisor questionAnswerAdvisor;
 
     public LoveConsultantService(ChatClient.Builder chatClientBuilder,
                                  AMapDateSpotTool dateSpotTool,
                                  WeatherTool weatherTool,
                                  UserProfileService userProfileService,
                                  QuestionAnswerAdvisor questionAnswerAdvisor,
+                                 HybridChatMemory chatMemory,
                                  @Value("${knowheart.chat.memory.retrieve-size:10}") int retrieveSize) {
         this.memoryRetrieveSize = retrieveSize;
         this.userProfileService = userProfileService;
-        this.questionAnswerAdvisor = questionAnswerAdvisor;
 
-        ChatMemory chatMemory = new InMemoryChatMemory();
-        MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
-                .build();
+        MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
 
-        // 默认启用：多轮记忆 + RAG 知识库 + 工具
         this.chatClient = chatClientBuilder
                 .defaultSystem(BASE_SYSTEM_PROMPT)
                 .defaultAdvisors(memoryAdvisor, questionAnswerAdvisor)
@@ -88,16 +84,16 @@ public class LoveConsultantService {
                 .build();
     }
 
-    private String buildSystemPromptWithProfile(String conversationId) {
-        String profileSummary = userProfileService.getProfileSummary(conversationId);
+    private String buildSystemPromptWithProfile(String userId) {
+        String profileSummary = userProfileService.getProfileSummary(userId);
         if (profileSummary != null && !profileSummary.isEmpty()) {
             return BASE_SYSTEM_PROMPT + "\n\n" + profileSummary;
         }
         return BASE_SYSTEM_PROMPT;
     }
 
-    private ChatClient createClientWithProfile(String conversationId) {
-        String enhancedPrompt = buildSystemPromptWithProfile(conversationId);
+    private ChatClient createClientWithProfile(String userId) {
+        String enhancedPrompt = buildSystemPromptWithProfile(userId);
         if (enhancedPrompt.equals(BASE_SYSTEM_PROMPT)) {
             return chatClient;
         }
@@ -113,6 +109,20 @@ public class LoveConsultantService {
                 .param(MessageChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY, memoryRetrieveSize));
     }
 
+    private String runWithConversationContext(String conversationId, java.util.function.Supplier<String> action) {
+        ChatMemoryContext.set(conversationId);
+        try {
+            return action.get();
+        } finally {
+            ChatMemoryContext.clear();
+        }
+    }
+
+    private Flux<String> streamWithConversationContext(String conversationId, java.util.function.Supplier<Flux<String>> action) {
+        ChatMemoryContext.set(conversationId);
+        return action.get().doFinally(signal -> ChatMemoryContext.clear());
+    }
+
     // 普通对话（无记忆、无 RAG）
     public String chat(String userMessage) {
         return chatClient.prompt()
@@ -122,41 +132,52 @@ public class LoveConsultantService {
     }
 
     // 带 RAG 知识库的对话（同步）
-    public String chatWithRag(String userMessage, String conversationId) {
-        return chatWithMemory(userMessage, conversationId);
+    public String chatWithRag(String userMessage, String userId, String conversationId) {
+        return chatWithMemory(userMessage, userId, conversationId);
     }
 
     // 多轮记忆 + 用户画像 + RAG + 工具
-    public String chatWithMemory(String userMessage, String conversationId) {
-        userProfileService.updateFromMessage(conversationId, userMessage);
-        ChatClient clientWithProfile = createClientWithProfile(conversationId);
+    public String chatWithMemory(String userMessage, String userId, String conversationId) {
+        userProfileService.updateFromMessage(userId, userMessage);
+        ChatClient clientWithProfile = createClientWithProfile(userId);
 
-        return applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
-                .user(userMessage)
-                .call()
-                .content();
+        return runWithConversationContext(conversationId, () ->
+                applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
+                        .user(userMessage)
+                        .call()
+                        .content());
     }
 
-    public String chatWithMemoryAndTools(String userMessage, String conversationId) {
-        return chatWithMemory(userMessage, conversationId);
+    public String chatWithMemoryAndTools(String userMessage, String userId, String conversationId) {
+        return chatWithMemory(userMessage, userId, conversationId);
     }
 
     // 流式对话（含 RAG）
-    public Flux<String> chatStream(String userMessage, String conversationId) {
-        userProfileService.updateFromMessage(conversationId, userMessage);
-        ChatClient clientWithProfile = createClientWithProfile(conversationId);
+    public Flux<String> chatStream(String userMessage, String userId, String conversationId) {
+        userProfileService.updateFromMessage(userId, userMessage);
+        ChatClient clientWithProfile = createClientWithProfile(userId);
 
-        return applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
-                .user(userMessage)
-                .stream()
-                .content();
+        return streamWithConversationContext(conversationId, () ->
+                applyConversationAdvisors(clientWithProfile.prompt(), conversationId)
+                        .user(userMessage)
+                        .stream()
+                        .content());
     }
 
-    public Flux<String> chatStreamWithRag(String userMessage, String conversationId) {
-        return chatStream(userMessage, conversationId);
+    public Flux<String> chatStreamWithRag(String userMessage, String userId, String conversationId) {
+        return chatStream(userMessage, userId, conversationId);
     }
 
-    public Flux<String> chatStreamWithTools(String userMessage, String conversationId) {
-        return chatStream(userMessage, conversationId);
+    public Flux<String> chatStreamWithTools(String userMessage, String userId, String conversationId) {
+        return chatStream(userMessage, userId, conversationId);
+    }
+
+    /** 访客模式：userId 同时作为 conversationId。 */
+    public Flux<String> chatStreamGuest(String userMessage, String guestId) {
+        return chatStream(userMessage, guestId, guestId);
+    }
+
+    public String chatWithMemoryGuest(String userMessage, String guestId) {
+        return chatWithMemory(userMessage, guestId, guestId);
     }
 }

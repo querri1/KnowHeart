@@ -42,6 +42,7 @@ knowheart:
   chat:
     memory:
       retrieve-size: 10
+    max-conversations: 10
   rag:
     top-k: 6
     similarity-threshold: 0.0   # 0=不过滤，取 topK 内结果（中文语义检索分数常偏低）
