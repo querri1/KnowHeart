@@ -68,7 +68,6 @@
 | 地址 | 说明 |
 |------|------|
 | [http://116.62.44.153](http://116.62.44.153) | 生产环境入口（默认 80 端口） |
-| [http://116.62.44.153/api/knowheart/health](http://116.62.44.153/api/knowheart/health) | 健康检查 |
 
 未登录即可体验聊天；注册登录后可保存最多 10 条对话历史。
 
@@ -157,7 +156,7 @@ mvnw.cmd spring-boot:run
 
 浏览器访问：**http://localhost:8080**
 
-本地开发默认端口为 `8080`；生产环境通过阿里云 ECS 对外提供 **http://116.62.44.153** 访问。
+本地开发默认端口为 `8080`；
 
 ---
 
@@ -248,20 +247,6 @@ KnowHeart/
 │       └── static/index.html    # 前端单页
 └── pom.xml
 ```
-
----
-
-## 生产部署（阿里云）
-
-当前生产实例部署在阿里云 ECS 上，对外通过公网 IP 访问：
-
-- **站点地址**：[http://116.62.44.153](http://116.62.44.153)
-- **推荐配置**：JDK 21、MySQL 8、PostgreSQL + pgvector、Nginx 反向代理（80 → 8080）
-- **环境变量**：与本地开发相同（`DEEPSEEK_API_KEY`、`DASHSCOPE_API_KEY`、`MYSQL_PASSWORD`、`POSTGRES_PASSWORD` 等），在服务器或 systemd / Docker 中配置，勿提交到仓库
-
-典型启动流程：初始化数据库 → 配置 `application.yml` 与密钥 → 打包 `mvnw package` → 运行 JAR 或通过 Nginx 反代 Spring Boot 服务。
-
----
 
 ## 常见问题
 
