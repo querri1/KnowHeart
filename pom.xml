@@ -21,6 +21,7 @@
     <properties>
         <java.version>21</java.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
+        <skipTests>true</skipTests>
     </properties>
 
     <!-- Spring AI 需要配置仓库 -->

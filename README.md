@@ -5,6 +5,9 @@
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.5-green)
 ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0--M6-blue)
+![Demo](https://img.shields.io/badge/在线体验-116.62.44.153-blue)
+
+**在线体验**：[http://116.62.44.153](http://116.62.44.153)（部署于阿里云 ECS）
 
 ---
 
@@ -55,6 +58,20 @@
 | 向量存储 | PostgreSQL + pgvector（`love_knowledge` 表） |
 | 业务数据 | MySQL 8.x |
 | 前端 | 原生 HTML / CSS / JavaScript（单页应用） |
+| 生产部署 | 阿里云 ECS（公网 IP：`116.62.44.153`） |
+
+---
+
+## 在线体验
+
+项目已部署至 **阿里云服务器**，可直接在浏览器中访问：
+
+| 地址 | 说明 |
+|------|------|
+| [http://116.62.44.153](http://116.62.44.153) | 生产环境入口（默认 80 端口） |
+| [http://116.62.44.153/api/knowheart/health](http://116.62.44.153/api/knowheart/health) | 健康检查 |
+
+未登录即可体验聊天；注册登录后可保存最多 10 条对话历史。
 
 ---
 
@@ -70,7 +87,9 @@
 
 ---
 
-## 快速开始
+## 本地开发
+
+如需在本地运行或二次开发，请按以下步骤操作。
 
 ### 1. 克隆项目
 
@@ -139,6 +158,8 @@ mvnw.cmd spring-boot:run
 
 浏览器访问：**http://localhost:8080**
 
+本地开发默认端口为 `8080`；生产环境通过阿里云 ECS 对外提供 **http://116.62.44.153** 访问。
+
 ---
 
 ## 知识库文档
@@ -171,6 +192,9 @@ RAG 知识来源位于 `src/main/resources/documents/`，默认包含：
 | `GET` | `/api/knowheart/conversations/{id}/messages` | 加载消息 |
 | `GET` | `/api/knowheart/chat/stream?msg=&conversationId=` | SSE 流式聊天（主入口） |
 | `GET` | `/api/knowheart/health` | 健康检查 |
+
+**生产环境 Base URL**：`http://116.62.44.153/api/knowheart`  
+**本地开发 Base URL**：`http://localhost:8080/api/knowheart`
 
 登录后请求需在 Header 中携带：`Authorization: Bearer <token>`。  
 未登录时前端会生成本地 `userId` 传参，可聊天但不会写入 MySQL 对话历史。
@@ -225,6 +249,18 @@ KnowHeart/
 │       └── static/index.html    # 前端单页
 └── pom.xml
 ```
+
+---
+
+## 生产部署（阿里云）
+
+当前生产实例部署在阿里云 ECS 上，对外通过公网 IP 访问：
+
+- **站点地址**：[http://116.62.44.153](http://116.62.44.153)
+- **推荐配置**：JDK 21、MySQL 8、PostgreSQL + pgvector、Nginx 反向代理（80 → 8080）
+- **环境变量**：与本地开发相同（`DEEPSEEK_API_KEY`、`DASHSCOPE_API_KEY`、`MYSQL_PASSWORD`、`POSTGRES_PASSWORD` 等），在服务器或 systemd / Docker 中配置，勿提交到仓库
+
+典型启动流程：初始化数据库 → 配置 `application.yml` 与密钥 → 打包 `mvnw package` → 运行 JAR 或通过 Nginx 反代 Spring Boot 服务。
 
 ---
 
