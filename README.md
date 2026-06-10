@@ -5,7 +5,6 @@
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.5-green)
 ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0--M6-blue)
-![Demo](https://img.shields.io/badge/在线体验-116.62.44.153-blue)
 
 **在线体验**：[http://116.62.44.153](http://116.62.44.153)（部署于阿里云 ECS）
 
